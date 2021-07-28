@@ -1,4 +1,5 @@
 import { IPreparedQuery } from 'src/database/interfaces/database.interface';
+import { ParametersRequiredError } from 'src/errors/errors';
 
 /**
  * - takes a table, an update DTO, and params and dynamically builds the query
@@ -10,26 +11,45 @@ import { IPreparedQuery } from 'src/database/interfaces/database.interface';
  * @return {*}  - returns an object of a pre-built query
  */
 export function buildUpdateQuery(
-	tableName: string,
-	updateDto: any,
-	params: string,
+  tableName: string,
+  updateDto: any,
+  params: string,
+  userId: number,
+  queryIdentifier?: string,
 ): IPreparedQuery {
-	let query = `update ${tableName} set`;
-	const values = [];
+  //first, let's check for fields to update
+  if (Object.keys(updateDto).length < 1) {
+    throw new ParametersRequiredError(
+      `Unable to find parameters to update for this user.  Please make sure you're sending the right parameters in your request.`,
+    );
+  }
 
-	//determine which columns we need to update... if they're blank, ignore them
-	Object.keys(updateDto).forEach((col, idx) => {
-		if (updateDto[col]) {
-			query += ` ${col} = $${idx + 1}`;
-			values[idx] = updateDto[col];
-		}
-	});
+  let query = `update ${tableName} set`;
+  const values = [];
 
-	if (params) {
-		query += ` WHERE ${params}`;
-	}
+  //determine which columns we need to update... if they're blank, ignore them
+  Object.keys(updateDto).forEach((col, idx) => {
+    if (updateDto[col] && idx == 0) {
+      query += ` ${col} = $${idx + 1}`;
+      values[idx] = updateDto[col];
+    } else {
+      query += `, ${col} = $${idx + 1}`;
+      values[idx] = updateDto[col];
+    }
+  });
 
-	query += ' returning *';
+  //next, let's add in our updated_by to be our user
+  query += `, updated_by = ${userId}`;
 
-	return { name: `update-${tableName}`, text: query, values: values };
+  if (params) {
+    query += ` WHERE ${params}`;
+  }
+
+  query += ' returning *';
+
+  return {
+    name: `update-${tableName}${queryIdentifier ? '-' + queryIdentifier : ''}`,
+    text: query,
+    values: values,
+  };
 }
